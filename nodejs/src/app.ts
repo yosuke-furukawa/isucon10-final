@@ -6,6 +6,7 @@ import fs from "fs";
 import path from "path";
 import { Timestamp } from "google-protobuf/google/protobuf/timestamp_pb";
 import morgan from "morgan";
+import urlBase64 from 'urlsafe-base64';
 
 import { Notifier } from "./notifier";
 import {InitializeRequest, InitializeResponse} from "../proto/xsuportal/services/admin/initialize_pb";
@@ -87,7 +88,7 @@ const haltPb = (res: express.Response, code: number, humanMessage: string) => {
 
 export const secureRandom = (size: number) => {
   const buffer = crypto.randomBytes(size);
-  const base64 = buffer.toString('base64');
+  const base64 = urlBase64.encoode(buffer);
   return base64;
 };
 
@@ -836,7 +837,7 @@ app.get("/api/registration/session", async (req, res, next) => {
 
     const response = new GetRegistrationSessionResponse();
     if (team) {
-      const teamResource = await getTeamResource(team, db, currentContestant.id == currentTeam.leader_id, true, false);
+      const teamResource = await getTeamResource(team, db, currentContestant?.id == currentTeam?.leader_id, true, false);
       response.setTeam(teamResource);
       response.setMemberInviteUrl(`/registration?team_id=${team.id}&invite_token=${team.invite_token}`);
       response.setInviteToken(team.invite_token);
