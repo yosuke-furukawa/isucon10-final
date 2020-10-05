@@ -88,7 +88,7 @@ const haltPb = (res: express.Response, code: number, humanMessage: string) => {
 
 export const secureRandom = (size: number) => {
   const buffer = crypto.randomBytes(size);
-  const base64 = urlBase64.encoode(buffer);
+  const base64 = urlBase64.encode(buffer);
   return base64;
 };
 
