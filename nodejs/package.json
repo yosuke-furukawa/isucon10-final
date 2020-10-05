@@ -42,6 +42,7 @@
     "sshpk": "^1.16.1",
     "strftime": "^0.10.0",
     "urlsafe-base64": "^1.0.0",
-    "web-push": "^3.4.4"
+    "web-push": "^3.4.4",
+    "pprof": "^2.0.0"
   }
 }
