@@ -3,7 +3,7 @@ import { app } from "../app";
 import cluster from "cluster";
 import os from "os";
 
-const cpuNums = os.cpus().length*2;
+const cpuNums = os.cpus().length;
 
 process.on("unhandledRejection", (e) => {
   console.error(e);
