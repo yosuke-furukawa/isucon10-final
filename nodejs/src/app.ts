@@ -95,19 +95,6 @@ export const secureRandom = (size: number) => {
 
 export const app = express();
 
-app.use(async (req, res, next) => {
-  try {
-    const timeProfile = await pprof.time.profile({
-      durationMillis: 10000,
-    });
-    const buf = await pprof.encode(timeProfile);
-    await fs.promises.appendFile(`wall-${process.pid}.pb.gz`, buf);
-  } catch (e) {
-    // ignore
-  } finally {
-    next();
-}
-});
 app.set('trust proxy', 1);
 app.use(express.static("../public"));
 app.use(morgan('combined'));
