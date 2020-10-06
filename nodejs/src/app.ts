@@ -564,7 +564,7 @@ app.post("/initialize", async (req, res, next) => {
     await db.query('TRUNCATE `notifications`')
     await db.query('TRUNCATE `push_subscriptions`')
     await db.query('TRUNCATE `contest_config`')
-    await db.query('alter table notifications add index idx_contestant_id_read (contestant_id, read)')
+    await db.query('alter table `notifications` add index idx_contestant_id_read (`contestant_id`, `read`)')
 
     await db.query(
       'INSERT `contestants` (`id`, `password`, `staff`, `created_at`) VALUES (?, ?, TRUE, NOW(6))',
