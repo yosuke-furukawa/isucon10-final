@@ -4,7 +4,7 @@ import sshpk from 'sshpk';
 import urlBase64 from 'urlsafe-base64';
 import util from 'util';
 
-import type { PoolConnection } from 'promise-mysql';
+import type { PoolConnection } from 'mysql2/promise';
 import { Notification } from '../proto/xsuportal/resources/notification_pb';
 import { convertDateToTimestamp } from './app';
 
@@ -41,14 +41,14 @@ export class Notifier {
       for (const contestant of contestants) {
         const clarificationMessage = new Notification.ClarificationMessage();
         clarificationMessage.setClarificationId(clar.id);
-        clarificationMessage.setOwned(clar.team_id === contestant.team_id);
+        clarificationMessage.setOwned(clar.team_id === contestant["team_id"]);
         clarificationMessage.setUpdated(updated);
         const notification = new Notification();
         notification.setContentClarification(clarificationMessage);
-        const inserted = await this.notify(notification, contestant.id, db);
+        const inserted = await this.notify(notification, contestant["id"], db);
         if (inserted && Notifier.VAPIDKey) {
-          notification.setId(inserted.id);
-          notification.setCreatedAt(convertDateToTimestamp(inserted.created_at));
+          notification.setId(inserted["id"]);
+          notification.setCreatedAt(convertDateToTimestamp(inserted["created_at"]));
           // TODO Web Push IIKANJINI SHITE
         }
       }
@@ -65,10 +65,10 @@ export class Notifier {
       benchmarkJobMessage.setBenchmarkJobId(job.id);
       const notification = new Notification();
       notification.setContentBenchmarkJob(benchmarkJobMessage);
-      const inserted = await this.notify(notification, contestant.id, db);
+      const inserted = await this.notify(notification, contestant["id"], db);
       if (inserted && Notifier.VAPIDKey) {
-        notification.setId(inserted.id);
-        notification.setCreatedAt(convertDateToTimestamp(inserted.created_at));
+        notification.setId(inserted["id"]);
+        notification.setCreatedAt(convertDateToTimestamp(inserted["created_at"]));
         // TODO Web Push IIKANJINI SHITE
       }
     }

@@ -1,6 +1,6 @@
 import express from "express";
 import session from "cookie-session";
-import mysql from "promise-mysql";
+import mysql from "mysql2/promise";
 import crypto from 'crypto';
 import fs from "fs";
 import path from "path";
@@ -52,7 +52,7 @@ declare global {
   }
 }
 
-export const dbinfo: mysql.PoolConfig = {
+export const dbinfo: mysql.PoolOptions = {
   host: process.env['MYSQL_HOSTNAME'] ?? '127.0.0.1',
   port: Number.parseInt(process.env['MYSQL_PORT'] ?? '3306'),
   user: process.env['MYSQL_USER'] ?? 'isucon',
@@ -169,7 +169,7 @@ const getCurrentContestStatus = async (db: mysql.PoolConnection) => {
       FROM contest_config
     `);
 
-    let contestStatusStr = contest.status;
+    let contestStatusStr = contest["status"];
     if (process.env['APP_ENV'] != "production" && fs.existsSync(DEBUG_CONTEST_STATUS_FILE_PATH)) {
       contestStatusStr = fs.readFileSync(DEBUG_CONTEST_STATUS_FILE_PATH).toString();
     }
@@ -194,14 +194,14 @@ const getCurrentContestStatus = async (db: mysql.PoolConnection) => {
 
     return ({
       contest: {
-        registration_open_at: contest.registration_open_at,
-        contest_starts_at: contest.contest_starts_at,
-        contest_freezes_at: contest.contest_freezes_at,
-        contest_ends_at: contest.contest_ends_at,
-        frozen: contest.frozen === 1,
+        registration_open_at: contest["registration_open_at"],
+        contest_starts_at: contest["contest_starts_at"],
+        contest_freezes_at: contest["contest_freezes_at"],
+        contest_ends_at: contest["contest_ends_at"],
+        frozen: contest["frozen"] === 1,
         status: status,
       },
-      current_time: contest.current_time,
+      current_time: contest["current_time"],
     });
 };
 

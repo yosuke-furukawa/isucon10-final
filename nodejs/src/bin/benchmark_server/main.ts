@@ -1,6 +1,5 @@
-import mysql from "promise-mysql";
+import mysql from "mysql2/promise";
 import util from "util";
-import strftime from 'strftime'
 import { getDB, secureRandom, notifier, convertDateToTimestamp } from "../../app";
 import grpc, { callError, makeGenericClientConstructor } from "grpc";
 import BenchmarkQueue from "../../../proto/xsuportal/services/bench/receiving_grpc_pb";

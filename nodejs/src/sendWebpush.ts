@@ -3,10 +3,10 @@ import webpush from 'web-push';
 import sshpk from 'sshpk';
 import urlBase64 from 'urlsafe-base64';
 
-import type { Connection, ConnectionConfig } from 'promise-mysql';
+import type { Connection, ConnectionOptions } from 'mysql2/promise';
 import { Notification } from '../proto/xsuportal/resources/notification_pb';
 import { convertDateToTimestamp } from './app';
-import { createConnection } from 'promise-mysql';
+import { createConnection } from 'mysql2/promise';
 
 const WEBPUSH_SUBJECT = 'xsuportal-debug@example.com';
 
@@ -15,7 +15,7 @@ interface VapidKey {
     publicKey: string
 }
 
-const dbinfo: ConnectionConfig = {
+const dbinfo: ConnectionOptions = {
     host: process.env['MYSQL_HOSTNAME'] ?? '127.0.0.1',
     port: Number.parseInt(process.env['MYSQL_PORT'] ?? '3306'),
     user: process.env['MYSQL_USER'] ?? 'isucon',
@@ -86,13 +86,13 @@ const run = async (path: string, contestantId: string) => {
     try {
         const vapidKey = getVapidKey(path)
         const subscriptions = await getPushSubscriptions(db, contestantId)
-        if (subscriptions.length === 0) {
+        if (subscriptions.length <= 0) {
             throw new Error(`no push subscriptions found: contestant_id=${contestantId}`)
         }
         const notificationResource = getTestNotificationResource()
         const notification = await insertNotification(db, notificationResource, contestantId)
-        notificationResource.setId(notification.id)
-        notificationResource.setCreatedAt(convertDateToTimestamp(notification.created_at))
+        notificationResource.setId(notification["id"])
+        notificationResource.setCreatedAt(convertDateToTimestamp(notification["created_at"]))
         console.log('Notification: ', notificationResource.toObject())
 
         for (const subscription of subscriptions) {
