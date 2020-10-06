@@ -7,6 +7,7 @@ import path from "path";
 import { Timestamp } from "google-protobuf/google/protobuf/timestamp_pb";
 import morgan from "morgan";
 import urlBase64 from 'urlsafe-base64';
+import * as pprof from "pprof";
 
 import { Notifier } from "./notifier";
 import {InitializeRequest, InitializeResponse} from "../proto/xsuportal/services/admin/initialize_pb";
@@ -94,6 +95,19 @@ export const secureRandom = (size: number) => {
 
 export const app = express();
 
+app.use(async (req, res, next) => {
+  try {
+    const timeProfile = await pprof.time.profile({
+      durationMillis: 10000,
+    });
+    const buf = await pprof.encode(timeProfile);
+    await fs.promises.appendFile(`wall-${process.pid}.pb.gz`, buf);
+  } catch (e) {
+    // ignore
+  } finally {
+    next();
+}
+});
 app.set('trust proxy', 1);
 app.use(express.static("../public"));
 app.use(morgan('combined'));
