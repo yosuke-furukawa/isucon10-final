@@ -36,13 +36,15 @@ class BenchmarkQueueService implements BenchmarkQueue.IBenchmarkQueueServer {
           await db.rollback();
           break;
         }
-        const [gotLock] = await db.query('SELECT 1 FROM `benchmark_jobs` WHERE `id` = ? AND `status` = ? FOR UPDATE', [job.id, BenchmarkJob.Status.PENDING]);
+        const [rows] = await db.query('SELECT 1 FROM `benchmark_jobs` WHERE `id` = ? AND `status` = ? FOR UPDATE', [job.id, BenchmarkJob.Status.PENDING]);
+        const gotLock = rows?.[0];
         if (gotLock != null) {
           const handle = secureRandom(16);
           await db.query('UPDATE `benchmark_jobs` SET `status` = ?, handle = ? WHERE `id` = ? AND `status` = ? LIMIT 1', [
             BenchmarkJob.Status.SENT, handle, job.id, BenchmarkJob.Status.PENDING,
           ]);
-          const [contest] = await db.query('SELECT `contest_starts_at` FROM `contest_config` LIMIT 1');
+          const [rows2] = await db.query('SELECT `contest_starts_at` FROM `contest_config` LIMIT 1');
+          const contest = rows2[0];
           jobHandle = {
             jobId: job.id,
             handle,
@@ -90,7 +92,8 @@ class BenchmarkQueueService implements BenchmarkQueue.IBenchmarkQueueServer {
       if (i >= 1) {
         await sleep(50);
       }
-      [job] = await db.query('SELECT * FROM `benchmark_jobs` WHERE `status` = ? ORDER BY `id` LIMIT 1', [BenchmarkJob.Status.PENDING]);
+      const [rows] = await db.query('SELECT * FROM `benchmark_jobs` WHERE `status` = ? ORDER BY `id` LIMIT 1', [BenchmarkJob.Status.PENDING]);
+      job = rows?.[0];
       if (job) {
         break;
       }
@@ -122,10 +125,11 @@ class BenchmarkReportService implements BenchmarkReport.IBenchmarkReportServer {
 
     try {
       await db.beginTransaction();
-      const [job] = await db.query(
+      const [rows] = await db.query(
         'SELECT * FROM `benchmark_jobs` WHERE `id` = ? AND `handle` = ? LIMIT 1 FOR UPDATE',
         [request.getJobId(), request.getHandle(),]
       );
+      const job = rows?.[0];
 
       if (job == null) {
         await db.rollback();

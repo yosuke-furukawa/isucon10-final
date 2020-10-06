@@ -4,7 +4,7 @@ import sshpk from 'sshpk';
 import urlBase64 from 'urlsafe-base64';
 import util from 'util';
 
-import type { PoolConnection } from 'mysql2/promise';
+import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { Notification } from '../proto/xsuportal/resources/notification_pb';
 import { convertDateToTimestamp } from './app';
 
@@ -31,13 +31,14 @@ export class Notifier {
   }
 
   async notifyClarificationAnswered(clar: NonNullable<any>, db: PoolConnection, updated = false) {
-    const contestants = await db.query(
+    const [rows] = await db.query(
       clar.disclosed
         ? 'SELECT `id`, `team_id` FROM `contestants` WHERE `team_id` IS NOT NULL'
         : 'SELECT `id`, `team_id` FROM `contestants` WHERE `team_id` = ?',
       [clar.team_id]
     );
 
+    const contestants = rows as Array<any>;
       for (const contestant of contestants) {
         const clarificationMessage = new Notification.ClarificationMessage();
         clarificationMessage.setClarificationId(clar.id);
@@ -55,11 +56,11 @@ export class Notifier {
   }
 
   async notifyBenchmarkJobFinished(job, db: PoolConnection) {
-    const contestants = await db.query(
+    const [rows] = await db.query(
       'SELECT `id`, `team_id` FROM `contestants` WHERE `team_id` = ?',
       [job.team_id]
     );
-
+    const contestants = rows as Array<any>
     for (const contestant of contestants) {
       const benchmarkJobMessage = new Notification.BenchmarkJobMessage();
       benchmarkJobMessage.setBenchmarkJobId(job.id);

@@ -59,7 +59,8 @@ export const dbinfo: mysql.PoolOptions = {
   database: process.env['MYSQL_DATABASE'] ?? 'xsuportal',
   password: process.env['MYSQL_PASS'] || 'isucon',
   charset: 'utf8mb4',
-  timezone: 'z'
+  waitForConnections: true,
+  timezone: "+00:00",
 };
 
 const poolPromise = mysql.createPool(dbinfo);
@@ -124,12 +125,13 @@ const getCurrentContestant = function() {
     }
     const id = req.session.contestant_id;
     if (!id) return null;
-    const result = await db.query(
+    const [row] = await db.query(
       lock
         ? "SELECT * FROM `contestants` WHERE `id` = ? LIMIT 1 FOR UPDATE"
         : "SELECT * FROM `contestants` WHERE `id` = ? LIMIT 1",
       [id]
-    )
+    );
+    const result = row;
     req.context.currentContestant = result?.[0]
     return req.context.currentContestant
   }
@@ -142,19 +144,20 @@ const getCurrentTeam = function() {
     }
     const currentContestant = await getCurrentContestant(req, db);
     if (!currentContestant) return null
-    const result = await db.query(
+    const [row] = await db.query(
       lock
         ? "SELECT * FROM `teams` WHERE `id` = ? LIMIT 1 FOR UPDATE"
         : "SELECT * FROM `teams` WHERE `id` = ? LIMIT 1",
       [currentContestant['team_id']]
     )
+    const result = row;
     req.context.currentTeam = result?.[0]
     return req.context.currentTeam
   }
 }()
 
 const getCurrentContestStatus = async (db: mysql.PoolConnection) => {
-    const [contest] = await db.query(`
+    const [row] = await db.query(`
       SELECT
         *,
         NOW(6) AS \`current_time\`,
@@ -168,7 +171,7 @@ const getCurrentContestStatus = async (db: mysql.PoolConnection) => {
         IF(contest_starts_at <= NOW(6) AND NOW(6) < contest_freezes_at, 1, 0) AS frozen
       FROM contest_config
     `);
-
+    const contest = row?.[0];
     let contestStatusStr = contest["status"];
     if (process.env['APP_ENV'] != "production" && fs.existsSync(DEBUG_CONTEST_STATUS_FILE_PATH)) {
       contestStatusStr = fs.readFileSync(DEBUG_CONTEST_STATUS_FILE_PATH).toString();
@@ -251,15 +254,17 @@ async function getTeamResource(team: any, db: mysql.PoolConnection, detail: bool
   let members_pb = null;
   if (enableMembers) {
     if (team.leader_id != null) {
-      [leader] = await db.query(
+      const [row] = await db.query(
         'SELECT * FROM `contestants` WHERE `id` = ? LIMIT 1',
         [team.leader_id]
-      )
+      );
+      leader = row?.[0];
     }
-    members = await db.query(
+    const [row] = await db.query(
       'SELECT * FROM `contestants` WHERE `team_id` = ? ORDER BY `created_at`',
       [team.id]
     );
+    members = row;
     leader_pb = leader ? getContestantResource(leader, memberDetail) : null;
     members_pb = members ? members.map((m: any) => getContestantResource(m, memberDetail)) : null;
   }
@@ -303,10 +308,11 @@ async function getBenchmarkJobResource(job) {
 
 async function getBenchmarkJobsResource(req: express.Request, db: mysql.PoolConnection, limit?: number) {
   const currentTeam = await getCurrentTeam(req, db);
-  const jobs = await db.query(
+  const [row] = await db.query(
     `SELECT * FROM benchmark_jobs WHERE team_id = ? ORDER BY created_at DESC ${limit ? `LIMIT ${limit}` : ''}`,
     [currentTeam.id]
-  )
+  );
+  const jobs = row as unknown as Array<any>;
   return await Promise.all<BenchmarkJob>(jobs.map(job => getBenchmarkJobResource(job)));
 }
 
@@ -370,7 +376,7 @@ async function getLeaderboardResource(db: mysql.PoolConnection, teamId: number =
   let teamGraphScores: any = {};
   try {
     await db.beginTransaction();
-    leaderboard = await db.query(`
+    const [row] = await db.query(`
     SELECT
       teams.id AS id,
       teams.name AS name,
@@ -442,7 +448,9 @@ async function getLeaderboardResource(db: mysql.PoolConnection, teamId: number =
       latest_score_marked_at ASC
   `, [teamId, teamId, contestFinished, contestFreezesAt, teamId, teamId, contestFinished, contestFreezesAt]);
 
-    jobResults = await db.query(`
+  leaderboard = row;
+
+    const [row2] = await db.query(`
       SELECT
         team_id AS team_id,
         (score_raw - score_deduction) AS score,
@@ -459,6 +467,8 @@ async function getLeaderboardResource(db: mysql.PoolConnection, teamId: number =
       )
       ORDER BY finished_at
     `, [ teamId, teamId, contestFinished, contestFreezesAt ]);
+
+    jobResults = row2;
     await db.commit();
   } catch (e) {
     await db.rollback();
@@ -620,7 +630,7 @@ app.get("/api/admin/clarifications", async (req, res, next) => {
       return haltPb(res, 403, '管理者権限が必要です');
     }
 
-    const clars = await db.query('SELECT * FROM `clarifications` ORDER BY `updated_at` DESC');
+    const [clars] = await db.query('SELECT * FROM `clarifications` ORDER BY `updated_at` DESC');
 
     const clarPbs = [];
     for (const clar of clars) {
@@ -653,8 +663,10 @@ app.get("/api/admin/clarifications/:id", async (req, res, next) => {
       return haltPb(res, 403, '管理者権限が必要です');
     }
 
-    const [clar] = await db.query('SELECT * FROM `clarifications` WHERE `id` = ? LIMIT 1', [req.params.id]);
-    const [team] = await db.query('SELECT * FROM `teams` WHERE `id` = ? LIMIT 1', [clar.team_id]);
+    const [row1] = await db.query('SELECT * FROM `clarifications` WHERE `id` = ? LIMIT 1', [req.params.id]);
+    const clar = row1[0];
+    const [row2] = await db.query('SELECT * FROM `teams` WHERE `id` = ? LIMIT 1', [clar.team_id]);
+    const team = row2[0];
 
     const response = new GetClarificationResponse();
     response.setClarification(await getClarificationResource(clar, team, db));
@@ -685,8 +697,9 @@ app.put("/api/admin/clarifications/:id", async (req, res, next) => {
     }
 
     const request = RespondClarificationRequest.deserializeBinary(Uint8Array.from(req.body));
-    const [clarBefore] = await db.query('SELECT * FROM `clarifications` WHERE `id` = ? LIMIT 1 FOR UPDATE', [req.params.id]);
+    const [row] = await db.query('SELECT * FROM `clarifications` WHERE `id` = ? LIMIT 1 FOR UPDATE', [req.params.id]);
 
+    const clarBefore = row?.[0];
     if (clarBefore == null) {
       await db.rollback();
       return haltPb(res, 404, '質問が見つかりません');
@@ -706,19 +719,21 @@ app.put("/api/admin/clarifications/:id", async (req, res, next) => {
       req.params.id]
     )
 
-    const [clar] = await db.query(
+    const [row1] = await db.query(
       'SELECT * FROM `clarifications` WHERE `id` = ? LIMIT 1',
       [req.params.id],
     );
+    const clar = row1?.[0];
 
-    const [team] = await db.query(
+    const [row2] = await db.query(
       'SELECT * FROM `teams` WHERE `id` = ? LIMIT 1',
       [clar.team_id],
     );
+    const team = row2?.[0];
 
     await db.commit();
 
-    notifier.notifyClarificationAnswered(clar, db, wasAnswered && wasDisclosed == clar.disclosed)
+    notifier.notifyClarificationAnswered(clar, db, wasAnswered && wasDisclosed == clar?.disclosed)
     const clarPb = await getClarificationResource(clar, team, db);
 
     const response = new RespondClarificationResponse();
@@ -758,10 +773,10 @@ app.get("/api/session", async (req, res, next) => {
 app.get("/api/audience/teams", async (req, res, next) => {
   const db = await getDB();
   try {
-    const teams = await db.query('SELECT * FROM `teams` WHERE `withdrawn` = FALSE ORDER BY `created_at` DESC');
+    const [teams] = await db.query('SELECT * FROM `teams` WHERE `withdrawn` = FALSE ORDER BY `created_at` DESC');
     const items = [];
     for (const team of teams) {
-      const members = await db.query('SELECT * FROM `contestants` WHERE `team_id` = ? ORDER BY `created_at`', [team.id]);
+      const [members] = await db.query('SELECT * FROM `contestants` WHERE `team_id` = ? ORDER BY `created_at`', [team.id]);
       const teamListItem = new AudienceListTeamsResponse.TeamListItem();
       teamListItem.setTeamId(team.id);
       teamListItem.setName(team.name);
@@ -808,7 +823,8 @@ app.get("/api/registration/session", async (req, res, next) => {
     if (currentTeam) {
       team = currentTeam;
     } else if (req.query && req.query.team_id && req.query.invite_token) {
-      let [t] = await db.query('SELECT * FROM `teams` WHERE `id` = ? AND `invite_token` = ? AND `withdrawn` = FALSE LIMIT 1', [req.query.team_id, req.query.invite_token]);
+      let [row] = await db.query('SELECT * FROM `teams` WHERE `id` = ? AND `invite_token` = ? AND `withdrawn` = FALSE LIMIT 1', [req.query.team_id, req.query.invite_token]);
+      const t = row?.[0];
       if (t == null) {
         return haltPb(res, 404, "招待URLが無効です");
       }
@@ -816,8 +832,8 @@ app.get("/api/registration/session", async (req, res, next) => {
     }
 
     let members: any[];
-    if (team) {
-      members = await db.query('SELECT * FROM `contestants` WHERE `team_id` = ?', [team.id]);
+    if (team != null) {
+      [members] = await db.query('SELECT * FROM `contestants` WHERE `team_id` = ?', [team.id]);
     }
 
     const currentContestant = await getCurrentContestant(req, db);
@@ -872,7 +888,8 @@ app.post("/api/registration/team", async (req, res, next) => {
 
     await db.query('LOCK TABLES `teams` WRITE, `contestants` WRITE');
     const inviteToken = secureRandom(64);
-    const [withinCapacity] = await db.query('SELECT COUNT(*) < ? AS `within_capacity` FROM `teams`', [TEAM_CAPACITY]);
+    const [rows] = await db.query('SELECT COUNT(*) < ? AS `within_capacity` FROM `teams`', [TEAM_CAPACITY]);
+    const withinCapacity = rows[0];
     if (withinCapacity.within_capacity != 1) {
       return haltPb(res, 403, "チーム登録数上限です");
     }
@@ -881,7 +898,8 @@ app.post("/api/registration/team", async (req, res, next) => {
       'INSERT INTO `teams` (`name`, `email_address`, `invite_token`, `created_at`) VALUES (?, ?, ?, NOW(6))',
       [request.getTeamName(), request.getEmailAddress(), inviteToken],
     );
-    const [{id: teamId}] = await db.query('SELECT LAST_INSERT_ID() AS `id`');
+    const [row] = await db.query('SELECT LAST_INSERT_ID() AS `id`');
+    const teamId = row?.[0]?.id;
     if (teamId == null) {
       return haltPb(res, 500, "チームを登録できませんでした");
     }
@@ -929,19 +947,21 @@ app.post("/api/registration/contestant", async (req, res, next) => {
       return;
     }
 
-    const [team] = await db.query('SELECT * FROM `teams` WHERE `id` = ? AND `invite_token` = ? AND `withdrawn` = FALSE LIMIT 1 FOR UPDATE', [
+    const [row] = await db.query('SELECT * FROM `teams` WHERE `id` = ? AND `invite_token` = ? AND `withdrawn` = FALSE LIMIT 1 FOR UPDATE', [
       request.getTeamId(), request.getInviteToken()
     ]);
+    const team = row?.[0];
 
     if (team == null) {
       await db.rollback();
       return haltPb(res, 400, '招待URLが不正です');
     }
 
-    const [members] = await db.query(
+    const [rows] = await db.query(
       'SELECT COUNT(*) AS `cnt` FROM `contestants` WHERE `team_id` = ?',
       [request.getTeamId()],
     );
+    const members = rows?.[0];
 
     if (members.cnt >= 3) {
       await db.rollback();
@@ -1070,7 +1090,7 @@ app.post("/api/contestant/benchmark_jobs", async (req, res, next) => {
     }
 
     const currentTeam = await getCurrentTeam(req, db);
-    const [jobCount] = await db.query(
+    const [[jobCount]] = await db.query(
       'SELECT COUNT(*) AS `cnt` FROM `benchmark_jobs` WHERE `team_id` = ? AND `finished_at` IS NULL',
       [currentTeam.id]
     );
@@ -1085,7 +1105,8 @@ app.post("/api/contestant/benchmark_jobs", async (req, res, next) => {
     )
     await db.commit();
 
-    const [job] = await db.query('SELECT * FROM `benchmark_jobs` WHERE `id` = (SELECT LAST_INSERT_ID()) LIMIT 1');
+    const [row] = await db.query('SELECT * FROM `benchmark_jobs` WHERE `id` = (SELECT LAST_INSERT_ID()) LIMIT 1');
+    const job = row?.[0];
     const response = new ContestantEnqueueBenchmarkJobResponse();
     response.setJob(await getBenchmarkJobResource(job));
     res.contentType(`application/vnd.google.protobuf`);
@@ -1126,11 +1147,12 @@ app.get("/api/contestant/benchmark_jobs/:id", async (req, res, next) => {
     }
 
     const currentTeam = await getCurrentTeam(req, db);
-    const [job] = await db.query(
+    const [row] = await db.query(
       'SELECT * FROM `benchmark_jobs` WHERE `team_id` = ? AND `id` = ? LIMIT 1',
       [currentTeam.id, req.params.id]
     );
 
+    const job = row?.[0];
     if (!job) {
       return haltPb(res, 404, "ベンチマークジョブが見つかりません")
     }
@@ -1156,17 +1178,18 @@ app.get("/api/contestant/clarifications", async (req, res, next) => {
     }
 
     const currentTeam = await getCurrentTeam(req, db);
-    const rows = await db.query(
+    const [rows] = await db.query(
       'SELECT * FROM `clarifications` WHERE `team_id` = ? OR `disclosed` = TRUE ORDER BY `id` DESC',
       [currentTeam.id],
-    )
+    );
 
     const clars = []
     for (const row of rows) {
-      const [team] = await db.query(
+      const [row2] = await db.query(
         'SELECT * FROM `teams` WHERE `id` = ? LIMIT 1',
         row.team_id,
       );
+      const team = row2[0];
       clars.push(await getClarificationResource(row, team, db))
     }
 
@@ -1201,7 +1224,8 @@ app.post("/api/contestant/clarifications", async (req, res, next) => {
     )
     await db.commit();
 
-    const [clar] = await db.query('SELECT * FROM `clarifications` WHERE `id` = LAST_INSERT_ID() LIMIT 1')
+    const [row] = await db.query('SELECT * FROM `clarifications` WHERE `id` = LAST_INSERT_ID() LIMIT 1');
+    const clar = row?.[0];
     const response = new RequestClarificationResponse();
     response.setClarification(await getClarificationResource(clar, currentTeam, db));
     res.contentType(`application/vnd.google.protobuf`);
@@ -1248,7 +1272,7 @@ app.get("/api/contestant/notifications", async (req, res, next) => {
     const after = req.query.after;
     const currentContestant = await getCurrentContestant(req, db);
 
-    const notifications = await db.query(
+    const [notifications] = await db.query(
       after
         ? 'SELECT * FROM `notifications` WHERE `contestant_id` = ? AND `id` > ? ORDER BY `id`'
         : 'SELECT * FROM `notifications` WHERE `contestant_id` = ? AND `read` = FALSE ORDER BY `id`',
@@ -1263,10 +1287,11 @@ app.get("/api/contestant/notifications", async (req, res, next) => {
     await db.commit();
 
     const currentTeam = await getCurrentTeam(req, db);
-    const [lastAnsweredClar] = await db.query(
+    const [row] = await db.query(
       'SELECT `id` FROM `clarifications` WHERE (`team_id` = ? OR `disclosed` = TRUE) AND `answered_at` IS NOT NULL ORDER BY `id` DESC LIMIT 1',
       [currentTeam.id]
     );
+    const lastAnsweredClar = row?.[0];
 
     const response = new ListNotificationsResponse();
     response.setLastAnsweredClarificationId(lastAnsweredClar?.id);
@@ -1366,10 +1391,12 @@ app.post("/api/login", async (req, res, next) => {
   const db = await getDB();
   try {
     const request = LoginRequest.deserializeBinary(Uint8Array.from(req.body));
-    const [contestant] = await db.query(
+    const [row] = await db.query(
       'SELECT `password` FROM `contestants` WHERE `id` = ? LIMIT 1',
       [request.getContestantId()],
     );
+
+    const contestant = row?.[0];
 
     if (contestant?.password === crypto.createHash('sha256').update(request.getPassword(), "utf8").digest('hex')) {
       req.session.contestant_id = request.getContestantId();
