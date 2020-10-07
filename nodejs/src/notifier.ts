@@ -31,7 +31,7 @@ export class Notifier {
   }
 
   async notifyClarificationAnswered(clar: NonNullable<any>, db: PoolConnection, updated = false) {
-    const [rows] = await db.query(
+    const [rows] = await db.execute(
       clar.disclosed
         ? 'SELECT `id`, `team_id` FROM `contestants` WHERE `team_id` IS NOT NULL'
         : 'SELECT `id`, `team_id` FROM `contestants` WHERE `team_id` = ?',
@@ -56,7 +56,7 @@ export class Notifier {
   }
 
   async notifyBenchmarkJobFinished(job, db: PoolConnection) {
-    const [rows] = await db.query(
+    const [rows] = await db.execute(
       'SELECT `id`, `team_id` FROM `contestants` WHERE `team_id` = ?',
       [job.team_id]
     );
@@ -77,11 +77,11 @@ export class Notifier {
 
   async notify(notification: Notification, contestantId, db: PoolConnection) {
     const encodedMessage = Buffer.from(notification.serializeBinary()).toString('base64');
-    await db.query(
+    await db.execute(
       'INSERT INTO `notifications` (`contestant_id`, `encoded_message`, `read`, `created_at`, `updated_at`) VALUES (?, ?, FALSE, NOW(6), NOW(6))',
       [contestantId, encodedMessage]
     );
-    let [n] = await db.query('SELECT * FROM `notifications` WHERE `id` = LAST_INSERT_ID() LIMIT 1');
+    let [n] = await db.execute('SELECT * FROM `notifications` WHERE `id` = LAST_INSERT_ID() LIMIT 1');
     return n
   }
 }
